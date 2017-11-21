@@ -1,0 +1,130 @@
+---
+title: "Exploring Keras with R"
+author: Nuno Cravino
+output: 
+  rmarkdown::html_document:
+  theme: lumen
+---
+
+This started as some tests on Keras under R and ended up as a basic exploration of Keras that can be interesting to people that want to learn the basics.
+
+Lets start by loading up keras and a few other packages, as well as the iris dataset we'll be using.
+
+```{r echo=F}
+library(knitr)
+```
+
+```{r warning=FALSE, message=FALSE}
+library(data.table) #because I like it
+library(GGally) #for ggparcoord
+library(ggplot2) #to manipulate the plot
+library(keras) #keras duuh
+library(MLmetrics) #for accuracy
+data(iris)
+setDT(iris)
+```
+
+Since we have few observations and variables lets take a look at our dataset using a parallel coordinates plot.
+
+```{r }
+ggparcoord(iris,groupColumn =  "Species",columns = 1:4,alphaLines = .6)+
+    theme(axis.title.x = element_blank(),axis.title.y = element_blank(),axis.text.y = element_blank())
+```
+
+We can see that Petal Width and Length are actually pretty good at discriminating between the Species of flower. In this rather simple dataset we could use a basic classifier, however this is not the case for most data out there in the wild, so lets just pretend we don't know that and create a simple neural network to do the job using keras.
+
+```{r warning=FALSE, message=FALSE}
+model<-keras_model_sequential() 
+```
+
+This creates the base for a sequential NN, later on we will be adding layers to our model. For now lets prepare our data. 
+
+We will be creating a multiclass classifier, for keras this means that we are going to have an N dimensional output, where N = the number of classes in our target, which in this case is 3. Keras provides the `to_categorical` function to turn our target into a N dimensional array of binary coded variables, but lets take a look.
+
+
+```{r}
+encoded_species<-to_categorical(as.numeric(iris$Species)-1)
+```
+
+```{r echo=F, results="asis"}
+set.seed(0)
+colnames(encoded_species)<-levels(iris$Species)
+kable(encoded_species[sample(1:150,10),])
+```
+
+We also need to create a simple 80/20 random split of our data in order to validate our model.
+
+```{r}
+set.seed(42)
+iris[,split:=sample(c("train","test"), .N,prob = c(.8,.2),replace=T)]
+```
+
+Now that we have prepared our data lets add a new layer to our model. We can do this using the `layer_dense` function. We also need to choose our activation function, traditionally this would mean the sigmoid function, but the current state of the art suggest us to use ReLU to improve training performance. We will also make use of the pipe operator `%>%`, this means that instead of writing `function(arg1,arg2)` we will write `arg1 %>% function(arg2)`. Choosing the number of nodes is easy for our input, since it's the number of variables and we just need to pass it as the parameter `input_shape` to the first layer. For the number of nodes/units in the hidden layer, it's tricky, but we should not have more nodes than variables in our data to prevent overfitting. For the sake of simplicity I'm just going to use half the number of variables.
+
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+model<-keras_model_sequential()  %>%
+     layer_dense(units=2,activation="relu",input_shape=4) # %>%
+      #...
+
+```
+
+Our model is not going to work since we have no output layer. Since we're doing a multiclass classifier let's just go ahead and add a layer with 3 output nodes. The activation function is going to be sofmax, which will allow us to have a probability-like output for each class in each prediction.
+
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+model<-keras_model_sequential()  %>%
+     layer_dense(units=2,activation="relu",input_shape=4) %>%
+     layer_dense(units=3,activation="softmax") # %>%
+    #...
+```
+
+In order for our model to be complete we need to configure a few more things. We need to tell it what optimizer to use and also the loss function that is going to be optimized. We're just going to use an adam optimizer and since we're doing a multiclass model, we'll be using categorical crossentropy loss. We do this using the `compile` function and passing the optimizer and loss parameters. Additionally I'm going to pass accuracy as an additional metric to be computed.
+
+```{r warning=FALSE, message=FALSE}
+model<-keras_model_sequential()  %>%
+     layer_dense(units=2,activation="relu", input_shape=4) %>%
+     layer_dense(units=3,activation="softmax") %>%
+     compile(optimizer = "adam", loss="categorical_crossentropy", metrics="accuracy")
+```
+
+We can check our model topology using the `summary` function.
+
+```{r warning=FALSE, message=FALSE}
+summary(model)
+```
+
+We have completed the specification of our model, all that is left is to actually run the fitting process. We do this using the `fit` function to which we'll pass our data, our target variable. We can also specify the number of passes over the training data that the fitting process will perform by specifying the the number of epochs. 
+
+Contrary to most models in R, our model is going to be fitted in-place, which means that our final model will also be in our `model` variable.
+
+We can probably improve our fitting process if we scale our data. We can do this using the `scale` function from R
+ 
+Lets just run the process for a 300 epochs to see if everything is alright.
+
+```{r warning=FALSE}
+iris_scaled<-scale(as.matrix(iris[split=="train",1:4]))
+fitinfo<-fit(model, x= iris_scaled, y=encoded_species[which(iris$split=="train"),],epochs = 500,verbose = 0)
+plot(fitinfo)
+print(fitinfo)
+```
+
+The model seems to have a good enough performance so lets test it on our validation set. First we're going to use the scaling factors from the training data, and then we're going to predict our classes and check its accuracy.
+
+```{r warning=FALSE}
+iris_scaled_test<-scale(as.matrix(iris[split=="test",1:4]),
+                        center=attr(iris_scaled,"scaled:center"),
+                        scale=attr(iris_scaled,"scaled:scale"))
+test_predictions<-predict(model,iris_scaled_test)
+head(test_predictions,10)
+
+``` 
+
+Lets select the class with higher probability for each observation, translate it into the original levels, and check the accuracy.
+
+```{r warning=FALSE}
+test_predictions_categorical<-levels(iris$Species)[apply(test_predictions,1,which.max)]
+Accuracy(test_predictions_categorical,iris[split=="test"]$Species)
+```
+
+That is a good enough performance for this simple exploration, we can always improve it. We could add a drop out layer to prevent overfitting and/or increase the number of epochs. We could also play around with the parameters of our optimizer or even try a different topology.
+
+This ends our Exploration, and there is plenty more to learn on ![https://keras.io/]{https://keras.io/}.
