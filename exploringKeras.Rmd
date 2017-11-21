@@ -1,8 +1,8 @@
 ---
 title: "Exploring Keras with R"
-author: Nuno Cravino
-output: 
-  rmarkdown::html_document:
+author: "Nuno Cravino"
+output:
+  rmarkdown::html_document: null
   theme: lumen
 ---
 
@@ -127,4 +127,14 @@ Accuracy(test_predictions_categorical,iris[split=="test"]$Species)
 
 That is a good enough performance for this simple exploration, we can always improve it. We could add a drop out layer to prevent overfitting and/or increase the number of epochs. We could also play around with the parameters of our optimizer or even try a different topology.
 
-This ends our Exploration, and there is plenty more to learn on ![https://keras.io/]{https://keras.io/}.
+This ends our Exploration, but there is plenty more to learn on https://keras.io/.
+
+
+
+
+
+
+
+```{r}
+```
+
